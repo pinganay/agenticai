@@ -1,4 +1,16 @@
 import sqlite3
+from langchain_community.utilities import SQLDatabase
+from langchain_groq import ChatGroq
+from langchain_community.agent_toolkits import SQLDatabaseToolkit
+from langchain_core.tools import tool
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GROQ_API_KEY=os.getenv("GROQ_API_KEY")
+llm=ChatGroq(model="llama-3.3-70b-versatile")
 
 connection = sqlite3.connect("mydb.db")
 print(connection)
@@ -97,7 +109,41 @@ connection.commit()
 
 #Testing the table creation
 
-cursor.execute("select * from employees;")
+cursor.execute("SELECT * FROM employees;")
 
-for row in cursor.fetchall():
-    print(row)
+# for row in cursor.fetchall():
+#     print(row)
+
+#Loading Database
+db=SQLDatabase.from_uri("sqlite:///mydb.db")
+
+#Testing llm model
+#print(llm.invoke("hello how are you?"))
+
+toolkit=SQLDatabaseToolkit(db=db, llm=llm)
+tools=toolkit.get_tools()
+
+list_table_tools=next((tool for tool in tools if tool.name=="sql_db_list_tables"), None)
+get_schema_tool = next((tool for tool in tools if tool.name == "sql_db_schema"), None)
+#print(get_schema_tool.invoke("customers"))
+
+@tool
+def db_query_tool(query:str) -> str:
+    """
+    Execute a SQL query against the database and return the result.
+    If the query is invalid or returns no result, an error message will be returned.
+    In case of an error, the user is advised to rewrite the query and try again.
+    """
+
+    result=db.run_no_throw(query)
+    if not result:
+        return "Error: Query failed. Please rewrite your query and try again."
+    return result
+
+#Without llm model
+#print(db_query_tool.invoke("SELECT * FROM employees;"))
+
+#With llm model
+
+llm_with_tools=llm.bind_tools([db_query_tool])
+print(llm_with_tools.invoke("SELECT * FROM Employees;"))
